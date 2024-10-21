@@ -4,37 +4,29 @@ FROM ubuntu:latest
 # Set non-interactive mode for apt-get
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install necessary packages: tmate and OpenSSH server
+# Install tmate and a lightweight HTTP server (Nginx)
 RUN apt-get update && \
-    apt-get install -y tmate openssh-server && \
+    apt-get install -y tmate nginx && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create necessary directories for SSH and tmate
-RUN mkdir -p /var/run/sshd /root/.tmate
+# Create directory for serving the HTML page
+RUN mkdir -p /var/www/html
 
-# Start SSH server and generate persistent SSH keys
-RUN ssh-keygen -A
+# Start tmate in the background and write the session details to index.html
+RUN tmate -F | tee /var/www/html/index.html &
 
-# Generate a tmate session and save SSH and web connection info to /root/.tmate.conf
-RUN if [ ! -f /root/.tmate.conf ]; then \
-    tmate -S /root/.tmate.sock new-session -d && \
-    tmate -S /root/.tmate.sock wait tmate-ready && \
-    tmate -S /root/.tmate.sock display -p '#{tmate_ssh}' > /root/.tmate.conf && \
-    tmate -S /root/.tmate.sock display -p '#{tmate_web}' >> /root/.tmate.conf; \
-    fi
+# Keep tmate session active 24/7 without resetting
+RUN echo "set -g tmate-server-keepalive 1" >> ~/.tmate.conf
 
-# Expose multiple ports for SSH and web access
-EXPOSE 2222   # Default SSH port (can use for SSH access)
-EXPOSE 8080   # Example web service port
-EXPOSE 3000   # Example alternative service port (for another app if needed)
+# Replace the default Nginx config with a basic one
+RUN echo 'server { listen 80; location / { root /var/www/html; try_files $uri $uri/ =404; } }' > /etc/nginx/sites-available/default
 
-# Ensure tmate session runs in a persistent loop without resetting
-CMD while true; do \
-    if ! tmate -S /root/.tmate.sock has-session 2>/dev/null; then \
-        tmate -S /root/.tmate.sock new-session -d && \
-        tmate -S /root/.tmate.sock wait tmate-ready && \
-        cat /root/.tmate.conf; \
-    fi; \
-    sleep 10; \
-done
+# Expose port 80 for the web server
+EXPOSE 80
+
+# Add a keep-alive loop to prevent the VPS from going idle
+RUN while true; do echo "VPS is alive"; sleep 300; done &
+
+# Start Nginx in the foreground (which will keep the container alive)
+CMD ["nginx", "-g", "daemon off;"]
