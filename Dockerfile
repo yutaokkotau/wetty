@@ -4,17 +4,20 @@ FROM ubuntu:latest
 # Set non-interactive mode for apt-get
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install necessary packages: Wetty (web-based SSH terminal) and Node.js
+# Install necessary packages: curl, sudo, OpenSSH server, and Sish
 RUN apt-get update && \
-    apt-get install -y curl gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_16.x | bash - && \
-    apt-get install -y nodejs openssl && \
-    npm install -g wetty && \
+    apt-get install -y curl sudo openssh-server && \
+    curl -L https://github.com/antoniomika/sish/releases/download/v1.0.0/sish-linux-amd64 \
+    -o /usr/local/bin/sish && \
+    chmod +x /usr/local/bin/sish && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Expose port 3000 for Wetty web SSH access
-EXPOSE 3000
+# Create a directory for SSH keys
+RUN mkdir /run/sshd
 
-# Start Wetty (web-based SSH) on port 3000
-CMD ["wetty", "--port", "3000"]
+# Expose port 2222 for SSH and 443 for HTTPS connections (Sish)
+EXPOSE 2222 443
+
+# Start SSH server and Sish (no user setup required)
+CMD ["/usr/local/bin/sish", "-ssh-address", ":2222", "-http-address", ":443", "-https", "-localhost-only", "false"]
