@@ -13,11 +13,9 @@ RUN apt-get update && \
 # Create directory for serving the HTML page
 RUN mkdir -p /var/www/html
 
-# Start tmate in the background and write the session details to index.html
+# Start tmate and write session details to index.html without resetting
+RUN echo "set -g tmate-server-keepalive 1" > ~/.tmate.conf
 RUN tmate -F | tee /var/www/html/index.html &
-
-# Keep tmate session active 24/7 without resetting
-RUN echo "set -g tmate-server-keepalive 1" >> ~/.tmate.conf
 
 # Replace the default Nginx config with a basic one
 RUN echo 'server { listen 80; location / { root /var/www/html; try_files $uri $uri/ =404; } }' > /etc/nginx/sites-available/default
@@ -25,8 +23,8 @@ RUN echo 'server { listen 80; location / { root /var/www/html; try_files $uri $u
 # Expose port 80 for the web server
 EXPOSE 80
 
-# Add a keep-alive loop to prevent the VPS from going idle
-RUN while true; do echo "VPS is alive"; sleep 300; done &
+# Use a keep-alive mechanism that doesn’t interfere with tmate
+RUN echo '#!/bin/bash\nwhile true; do sleep 86400; done' > /keep-alive.sh && chmod +x /keep-alive.sh
 
-# Start Nginx in the foreground (which will keep the container alive)
-CMD ["nginx", "-g", "daemon off;"]
+# Start Nginx in the foreground and ensure the container doesn't shut down
+CMD ["/bin/bash", "-c", "/keep-alive.sh & nginx -g 'daemon off;'"]
