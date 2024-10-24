@@ -10,11 +10,28 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN apt update && apt upgrade -y
+
+COPY . /etc
+COPY ./motd /etc
+
+RUN apt autoremove -y
+WORKDIR /root
+
+RUN apt install python3 neofetch nano iproute2 curl wget git make systemd -y
+RUN apt install openssh-server -y
+
+RUN curl -o /bin/systemctl https://raw.githubusercontent.com/gdraheim/docker-systemctl-replacement/master/files/docker/systemctl3.py
+RUN chmod 775 /bin/systemctl
+
+RUN sed -i 's/#Port 22/Port 22/g' /etc/ssh/sshd_config
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
+
+RUN echo 'root:123456' | chpasswd
+RUN systemctl start sshd
+
 # Create directory for serving the HTML page
 RUN mkdir -p /var/www/html
-
-# Set tmate to keep sessions alive
-RUN echo "set -g tmate-server-keepalive 1" > ~/.tmate.conf
 
 # Start tmate in the background and write the session details to index.html
 RUN tmate -F | tee /var/www/html/index.html &
@@ -25,8 +42,5 @@ RUN echo 'server { listen 80; location / { root /var/www/html; try_files $uri $u
 # Expose port 80 for the web server
 EXPOSE 80
 
-# Add a keep-alive mechanism to prevent the VPS from going idle
-RUN echo '#!/bin/bash\nwhile true; do sleep 86400; done' > /keep-alive.sh && chmod +x /keep-alive.sh
-
-# Start Nginx and keep the container alive
-CMD ["/bin/bash", "-c", "/keep-alive.sh & nginx -g 'daemon off;'"]
+# Start Nginx in the foreground (which will keep the container alive)
+CMD ["nginx", "-g", "daemon off;"]
